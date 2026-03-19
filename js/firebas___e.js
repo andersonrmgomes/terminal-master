@@ -38,8 +38,7 @@ async function fbInit() {
     const { getAuth, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword,
       createUserWithEmailAndPassword, GoogleAuthProvider, signOut, updateProfile }
       = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
-    const { getFirestore, doc, setDoc, getDoc, deleteDoc,
-      collection, query, orderBy, limit, onSnapshot, where }
+    const { getFirestore, doc, setDoc, getDoc, deleteDoc }
       = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
 
     FB.app = initializeApp(firebaseConfig);
@@ -57,12 +56,6 @@ async function fbInit() {
     FB._setDoc = setDoc;
     FB._getDoc = getDoc;
     FB._deleteDoc = deleteDoc;
-    FB._collection = collection;
-    FB._query = query;
-    FB._orderBy = orderBy;
-    FB._limit = limit;
-    FB._onSnapshot = onSnapshot;
-    FB._where = where;
 
     FB.initialized = true;
 
@@ -142,33 +135,12 @@ function fbSave(data) {
   clearTimeout(FB.saveTimeout);
   FB.saveTimeout = setTimeout(async () => {
     try {
-      const uid = FB.user.uid;
-      const displayName = FB.user.displayName || FB.user.email || 'Agente';
-
-      // Salvar save completo
-      const saveRef = FB._doc(FB.db, 'saves', uid);
-      await FB._setDoc(saveRef, {
+      const ref = FB._doc(FB.db, 'saves', FB.user.uid);
+      await FB._setDoc(ref, {
         ...data,
         achievements: [...(data.achievements || [])],
         updatedAt: new Date().toISOString(),
-        displayName,
-      });
-
-      // Atualizar documento de ranking separado (leitura pública agregada)
-      const progress = data.progress || {};
-      // XP por OS: soma das missões completadas por pack
-      const xpWindows = calcOsXP(progress, 'windows');
-      const xpLinux = calcOsXP(progress, 'linux');
-      const rankRef = FB._doc(FB.db, 'ranking', uid);
-      await FB._setDoc(rankRef, {
-        uid,
-        displayName,
-        xpTotal: data.xp || 0,
-        level: data.level || 1,
-        xpWindows,
-        xpLinux,
-        achievements: (data.achievements || []).length,
-        updatedAt: new Date().toISOString(),
+        displayName: FB.user.displayName || FB.user.email,
       });
     } catch (err) {
       console.warn('Firebase save error:', err);
@@ -316,48 +288,6 @@ function buildLoginHTML() {
     </div>`;
 }
 
-// ─── XP POR OS ───────────────────────────────────────
-function calcOsXP(progress, os) {
-  // Packs de cada OS
-  const osPacks = {
-    windows: ['windows', 'windows_network'],
-    linux: ['linux', 'linux_network', 'linux_web', 'linux_server'],
-  };
-  const packs = osPacks[os] || [];
-  let xp = 0;
-  for (const packId of packs) {
-    const p = progress[packId];
-    if (!p) continue;
-    // Cada missão correta vale ~50 XP base (igual ao jogo)
-    xp += (p.correct || 0) * 50;
-  }
-  return xp;
-}
-
-// ─── RANKING REALTIME ────────────────────────────────
-let _rankingUnsub = null;
-
-function fbSubscribeRanking(onUpdate) {
-  if (!FB.db) return;
-  if (_rankingUnsub) _rankingUnsub();
-
-  const q = FB._query(
-    FB._collection(FB.db, 'ranking'),
-    FB._orderBy('xpTotal', 'desc'),
-    FB._limit(20)
-  );
-
-  _rankingUnsub = FB._onSnapshot(q, snap => {
-    const entries = [];
-    snap.forEach(d => entries.push({ id: d.id, ...d.data() }));
-    onUpdate(entries);
-  }, err => console.warn('Ranking snapshot error:', err));
-}
-
-function fbUnsubscribeRanking() {
-  if (_rankingUnsub) { _rankingUnsub(); _rankingUnsub = null; }
-}
-
 // ─── INIT ON LOAD ────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   // Mostra tela de login imediatamente enquanto Firebase carrega
@@ -371,6 +301,3 @@ window.fbSave = fbSave;
 window.fbLoad = fbLoad;
 window.fbLogout = fbLogout;
 window.fbDeleteSave = fbDeleteSave;
-window.fbSubscribeRanking = fbSubscribeRanking;
-window.fbUnsubscribeRanking = fbUnsubscribeRanking;
-window.calcOsXP = calcOsXP;

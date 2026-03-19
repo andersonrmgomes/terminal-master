@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 firebase-debug.log*
 firebase-debug.*.log*
+FIREBASE_SETUP.md
 
 # Firebase cache
 .firebase/
@@ -67,3 +68,11 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Editores de código
+.vscode/
+.idea/
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db

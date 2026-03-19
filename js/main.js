@@ -1099,16 +1099,117 @@ function buildQuickRef() {
 }
 
 function buildRanking() {
-  const me = { name: 'GHOST (você)', rank: RANKS[G.level - 1] || 'ROOKIE', xp: G.xp, current: true };
-  const all = [...RANKING_DATA, me].sort((a, b) => b.xp - a.xp).slice(0, 8);
-  $('ranking-content').innerHTML = all.map((r, i) => {
-    const pos = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1);
-    return `<div class="ranking-item ${r.current ? 'current' : ''}">
-      <div class="ranking-pos">${pos}</div>
-      <div class="ranking-info"><div class="ranking-name">${r.name}${r.current ? ' ◀' : ''}</div><div class="ranking-rank">${r.rank}</div></div>
-      <div class="ranking-xp">${r.xp} XP</div>
+  const el = $('ranking-content');
+  el.innerHTML = '<div class="ranking-loading"><span class="ranking-spinner"></span>Carregando ranking...</div>';
+
+  if (window.fbSubscribeRanking && window.FB && window.FB.user) {
+    // Cancela listener anterior se existir
+    if (window._rankingActiveSub) {
+      window.fbUnsubscribeRanking();
+      window._rankingActiveSub = false;
+    }
+    window._rankingActiveSub = true;
+    window.fbSubscribeRanking(entries => renderRankingEntries(entries));
+  } else {
+    // Fallback local
+    const me = { uid: 'local', displayName: 'GHOST (você)', level: G.level, xpTotal: G.xp, xpWindows: 0, xpLinux: 0, achievements: G.unlockedAchievements.size, isMe: true };
+    renderRankingEntries([me]);
+  }
+}
+
+function renderRankingEntries(entries) {
+  const el = $('ranking-content');
+  if (!el) return;
+
+  const myUid = (window.FB && window.FB.user) ? window.FB.user.uid : null;
+
+  // Calcular XP local por OS para o usuário atual
+  const myXpWin = window.calcOsXP ? window.calcOsXP(G.progress, 'windows') : 0;
+  const myXpLin = window.calcOsXP ? window.calcOsXP(G.progress, 'linux')   : 0;
+
+  // Merge: garantir que o usuário atual aparece com dados fresh
+  let list = entries.map(r => ({
+    ...r,
+    isMe: r.uid === myUid,
+    xpTotal:   r.uid === myUid ? G.xp   : (r.xpTotal   || 0),
+    xpWindows: r.uid === myUid ? myXpWin : (r.xpWindows || 0),
+    xpLinux:   r.uid === myUid ? myXpLin : (r.xpLinux   || 0),
+    displayName: r.uid === myUid
+      ? ((window.FB && window.FB.user && (window.FB.user.displayName || window.FB.user.email)) || r.displayName || 'Você')
+      : (r.displayName || 'Agente'),
+  }));
+
+  // Re-ordenar pelo XP total atualizado
+  list.sort((a, b) => b.xpTotal - a.xpTotal);
+
+  const myPos = list.findIndex(r => r.isMe);
+
+  el.innerHTML = `
+    <div class="ranking-tabs">
+      <button class="ranking-tab active" data-tab="total" onclick="switchRankTab(this,'total')">🏆 Total</button>
+      <button class="ranking-tab" data-tab="windows"  onclick="switchRankTab(this,'windows')">🪟 Windows</button>
+      <button class="ranking-tab" data-tab="linux"    onclick="switchRankTab(this,'linux')">🐧 Linux</button>
+    </div>
+    <div class="ranking-list" id="ranking-list"></div>
+    <div class="ranking-mypos ${myPos < 0 ? 'hidden' : ''}">
+      Sua posição: <strong>#${myPos + 1}</strong> de <strong>${list.length}</strong> agentes
+    </div>
+  `;
+
+  window._rankingData = list;
+  renderRankTab('total');
+}
+
+function switchRankTab(btn, tab) {
+  document.querySelectorAll('.ranking-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderRankTab(tab);
+}
+
+function renderRankTab(tab) {
+  const list = window._rankingData || [];
+  const myUid = (window.FB && window.FB.user) ? window.FB.user.uid : null;
+  const el = document.getElementById('ranking-list');
+  if (!el) return;
+
+  const field = tab === 'windows' ? 'xpWindows' : tab === 'linux' ? 'xpLinux' : 'xpTotal';
+  const sorted = [...list].sort((a, b) => (b[field] || 0) - (a[field] || 0));
+
+  el.innerHTML = sorted.map((r, i) => {
+    const pos   = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`;
+    const xp    = r[field] || 0;
+    const rank  = RANKS[Math.min((r.level || 1) - 1, RANKS.length - 1)];
+    const maxXp = sorted[0] ? (sorted[0][field] || 1) : 1;
+    const pct   = Math.round((xp / maxXp) * 100);
+    const ach   = r.achievements || 0;
+    const osTag = tab === 'windows'
+      ? '<span class="rtag win">WIN</span>'
+      : tab === 'linux'
+      ? '<span class="rtag lin">LIN</span>'
+      : `<span class="rtag win">W:${r.xpWindows||0}</span><span class="rtag lin">L:${r.xpLinux||0}</span>`;
+
+    return `<div class="ranking-item-v2 ${r.isMe ? 'current' : ''}">
+      <div class="ri-pos">${pos}</div>
+      <div class="ri-body">
+        <div class="ri-top">
+          <span class="ri-name">${escHtml(r.displayName)}${r.isMe ? ' <span class="ri-you">você</span>' : ''}</span>
+          <span class="ri-xp">${xp.toLocaleString()} XP</span>
+        </div>
+        <div class="ri-bar-wrap">
+          <div class="ri-bar" style="width:${pct}%"></div>
+        </div>
+        <div class="ri-meta">
+          <span class="ri-rank">${rank}</span>
+          ${osTag}
+          <span class="ri-ach">🏆 ${ach}</span>
+        </div>
+      </div>
     </div>`;
-  }).join('');
+  }).join('') || '<div class="ranking-empty">Nenhum agente registrado ainda.</div>';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ─── PANELS ────────────────────────────────────────
@@ -1119,6 +1220,12 @@ function openPanel(name) {
   el.classList.add('open'); el.style.display = 'flex';
 }
 function closePanel(name) {
+  if (name === 'ranking') {
+    if (window.fbUnsubscribeRanking && window._rankingActiveSub) {
+      window.fbUnsubscribeRanking();
+      window._rankingActiveSub = false;
+    }
+  }
   const el = $(name + '-overlay');
   el.classList.remove('open'); el.style.display = 'none';
 }

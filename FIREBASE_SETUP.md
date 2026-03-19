@@ -24,8 +24,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Save privado por usuário
     match /saves/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    // Ranking: qualquer usuário autenticado pode ler
+    // Só pode escrever no próprio documento
+    match /ranking/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
@@ -66,3 +73,15 @@ firebase deploy
 
 > **Nota**: O jogo funciona com `localStorage` como fallback caso o Firebase
 > não esteja configurado ou o usuário esteja offline.
+
+
+## 7. Criar índice para o Ranking (automático)
+
+Quando o ranking for aberto pela primeira vez, o Firebase pode solicitar
+a criação de um índice composto. Um link aparecerá no console do navegador —
+basta clicar nele para criar o índice automaticamente no Firebase Console.
+
+O índice necessário é:
+- **Coleção**: `ranking`
+- **Campo 1**: `xpTotal` (Decrescente)
+- **Modo**: Coleção

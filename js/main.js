@@ -855,7 +855,7 @@ function handleCommand() {
 
 function isCorrect(input, expected) {
   if (input === expected) return true;
-  const strip = s => s.replace(/['"]/g, '').replace(/\s+/g, ' ').trim();
+  const strip = s => s.replace(/['"]/g, '').replace(/\/+(\s|$)/g, '$1').replace(/\s+/g, ' ').trim();
   if (strip(input) === strip(expected)) return true;
   const flex = [['ls -la', 'ls -al'], ['ps aux', 'ps -aux']];
   for (const [a, b] of flex) if ((input === a && expected === b) || (input === b && expected === a)) return true;
@@ -1088,6 +1088,27 @@ function clearTerminal() {
   $('terminal-output').innerHTML = '';
   focusInput();
 }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const mcOverlay = $('mission-complete-overlay');
+    const vScreen = $('victory-screen');
+    
+    if (mcOverlay && mcOverlay.style.display === 'flex') {
+      e.preventDefault();
+      const isLast = G.missionIndex >= (window.GameData.MISSIONS[G.pack || G.os] || []).length - 1;
+      if (isLast) showVictory();
+      else nextMission();
+      return;
+    }
+    
+    if (vScreen && vScreen.style.display === 'flex') {
+      e.preventDefault();
+      restartGame();
+      return;
+    }
+  }
+});
 
 // ─── KICK OFF ──────────────────────────────────────
 boot();

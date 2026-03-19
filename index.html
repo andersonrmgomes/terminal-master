@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TERMINAL::MASTER — Hacking Protocol</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <canvas id="matrix-canvas"></canvas>
+  <div class="scanlines"></div>
+
+  <!-- BOOT SCREEN -->
+  <div id="boot-screen" class="screen active">
+    <div class="boot-container">
+      <div class="boot-logo">
+        <div class="logo-glitch" data-text="TERMINAL::MASTER">TERMINAL::MASTER</div>
+        <div class="logo-sub">[ HACKING PROTOCOL v3.1.7 ]</div>
+      </div>
+      <div class="boot-log" id="boot-log"></div>
+      <div class="boot-progress">
+        <div class="boot-bar" id="boot-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OS SELECT -->
+  <div id="os-screen" class="screen">
+    <div class="os-container">
+      <div class="os-header">
+        <span class="os-tag">// INICIALIZAÇÃO DO SISTEMA</span>
+        <h1 class="os-title">ESCOLHA SEU <span class="accent">PROTOCOLO</span></h1>
+        <p class="os-desc">Selecione o sistema operacional para iniciar sua missão de infiltração</p>
+      </div>
+      <div class="os-cards">
+        <div class="os-card" id="linux-card" onclick="selectOS('linux')">
+          <div class="os-card-glow linux-glow"></div>
+          <div class="os-card-icon">🐧</div>
+          <div class="os-card-name">LINUX</div>
+          <div class="os-card-shell">BASH SHELL</div>
+          <div class="os-card-tags"><span>ls</span><span>chmod</span><span>grep</span><span>pipe</span></div>
+          <div class="os-card-desc">Terminal nativo Unix. O favorito dos hackers e sysadmins de elite.</div>
+          <div class="os-card-btn">▶ INICIAR PROTOCOLO</div>
+        </div>
+        <div class="os-card" id="win-card" onclick="selectOS('windows')">
+          <div class="os-card-glow win-glow"></div>
+          <div class="os-card-icon">🪟</div>
+          <div class="os-card-name">WINDOWS</div>
+          <div class="os-card-shell">CMD / POWERSHELL</div>
+          <div class="os-card-tags"><span>dir</span><span>icacls</span><span>findstr</span><span>pipe</span></div>
+          <div class="os-card-desc">O ambiente mais difundido do mundo. Domine-o para acesso total.</div>
+          <div class="os-card-btn">▶ INICIAR PROTOCOLO</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN GAME SCREEN -->
+  <div id="game-screen" class="screen">
+
+    <div class="hud-top">
+      <div class="hud-left">
+        <div class="hud-logo">T::M</div>
+        <div class="hud-info">
+          <span class="hud-os" id="hud-os-label">LINUX</span>
+          <span class="hud-sep">|</span>
+          <span class="hud-agent">AGENTE: <span id="hud-agent" class="accent">GHOST</span></span>
+        </div>
+      </div>
+      <div class="hud-center">
+        <div class="hud-mission-label">MISSÃO ATIVA</div>
+        <div class="hud-mission-name" id="hud-mission-name">—</div>
+      </div>
+      <div class="hud-right">
+        <div class="hud-stat">
+          <span class="hud-stat-label">XP</span>
+          <span class="hud-stat-val accent" id="hud-xp">0</span>
+        </div>
+        <div class="hud-stat">
+          <span class="hud-stat-label">RANK</span>
+          <span class="hud-stat-val" id="hud-rank">ROOKIE</span>
+        </div>
+        <button class="hud-btn" onclick="openPanel('achievements')">🏆</button>
+        <button class="hud-btn" onclick="openPanel('ranking')">📊</button>
+      </div>
+    </div>
+
+    <div class="progress-container">
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-missions" id="progress-missions"></div>
+    </div>
+
+    <div class="main-layout">
+
+      <!-- LEFT: MISSION -->
+      <div class="panel mission-panel">
+        <div class="panel-header">
+          <span class="panel-title">// BRIEFING</span>
+          <span class="panel-badge" id="mission-phase-badge">FASE 1</span>
+        </div>
+        <div class="mission-content">
+          <div class="mission-objective">
+            <div class="mission-icon" id="mission-icon">🎯</div>
+            <h3 id="mission-title">Aguardando missão...</h3>
+            <p id="mission-desc">Selecione um sistema operacional para começar.</p>
+          </div>
+          <div class="mission-task-box">
+            <div class="task-label">▸ OBJETIVO:</div>
+            <div class="task-cmd" id="task-command">—</div>
+          </div>
+          <div class="mission-hint-box" id="hint-box" style="display:none">
+            <div class="hint-label">💡 DICA:</div>
+            <div class="hint-text" id="hint-text"></div>
+          </div>
+          <div class="mission-learn-box">
+            <div class="learn-label">📖 APRENDA:</div>
+            <div class="learn-text" id="learn-text">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER: TERMINAL -->
+      <div class="terminal-wrapper">
+        <div class="terminal-chrome">
+          <div class="chrome-dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <div class="chrome-title" id="chrome-title">bash — infiltrado@server:~</div>
+          <button class="chrome-btn" onclick="clearTerminal()">CLR</button>
+        </div>
+        <div class="terminal-body" id="terminal-body" onclick="focusInput()">
+          <div class="terminal-output" id="terminal-output"></div>
+          <div class="terminal-input-line" id="input-line">
+            <span class="prompt" id="prompt-text">infiltrado@server:~$</span>
+            <div class="input-wrapper">
+              <span class="input-ghost" id="input-ghost"></span>
+              <input
+                type="text"
+                id="terminal-input"
+                class="terminal-input"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+              />
+              <span class="cursor-caret" id="cursor-caret"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: STATUS -->
+      <div class="panel status-panel">
+        <div class="panel-header">
+          <span class="panel-title">// STATUS</span>
+        </div>
+        <div class="status-content">
+          <div class="status-section">
+            <div class="status-label">NÍVEL ATUAL</div>
+            <div class="status-value accent" id="status-level">1</div>
+          </div>
+          <div class="xp-bar-container">
+            <div class="xp-bar-track">
+              <div class="xp-bar-fill" id="xp-bar-fill"></div>
+            </div>
+            <div class="xp-bar-labels">
+              <span id="xp-current">0 XP</span>
+              <span id="xp-next">100 XP</span>
+            </div>
+          </div>
+          <div class="status-section">
+            <div class="status-label">COMANDOS CORRETOS</div>
+            <div class="status-value" id="status-correct">0</div>
+          </div>
+          <div class="status-section">
+            <div class="status-label">TENTATIVAS</div>
+            <div class="status-value" id="status-attempts">0</div>
+          </div>
+          <div class="status-section">
+            <div class="status-label">PRECISÃO</div>
+            <div class="status-value" id="status-accuracy">—</div>
+          </div>
+          <div class="divider"></div>
+          <div class="status-label">CONQUISTAS RECENTES</div>
+          <div class="recent-achievements" id="recent-achievements">
+            <div class="no-ach">Nenhuma ainda...</div>
+          </div>
+          <div class="divider"></div>
+          <div class="status-label">REFERÊNCIA RÁPIDA</div>
+          <div class="quick-ref" id="quick-ref"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ACHIEVEMENTS OVERLAY -->
+  <div id="achievements-overlay" class="overlay" onclick="closePanel('achievements')">
+    <div class="overlay-panel" onclick="event.stopPropagation()">
+      <div class="overlay-header">
+        <span class="overlay-title">🏆 CONQUISTAS</span>
+        <button class="overlay-close" onclick="closePanel('achievements')">✕</button>
+      </div>
+      <div class="achievements-grid" id="achievements-grid"></div>
+    </div>
+  </div>
+
+  <!-- RANKING OVERLAY -->
+  <div id="ranking-overlay" class="overlay" onclick="closePanel('ranking')">
+    <div class="overlay-panel" onclick="event.stopPropagation()">
+      <div class="overlay-header">
+        <span class="overlay-title">📊 RANKING DE ACESSO</span>
+        <button class="overlay-close" onclick="closePanel('ranking')">✕</button>
+      </div>
+      <div class="ranking-content" id="ranking-content"></div>
+    </div>
+  </div>
+
+  <!-- ACHIEVEMENT TOAST -->
+  <div class="achievement-toast" id="achievement-toast">
+    <div class="toast-icon" id="toast-icon">🏆</div>
+    <div class="toast-text">
+      <div class="toast-title">CONQUISTA DESBLOQUEADA!</div>
+      <div class="toast-name" id="toast-name"></div>
+    </div>
+  </div>
+
+  <!-- MISSION COMPLETE -->
+  <div id="mission-complete-overlay" class="overlay" style="display:none">
+    <div class="mission-complete-panel">
+      <div class="mc-glitch">ACESSO CONCEDIDO</div>
+      <div class="mc-subtitle" id="mc-subtitle">Missão completada!</div>
+      <div class="mc-xp" id="mc-xp">+50 XP</div>
+      <div class="mc-next-btn" id="mc-next-btn" onclick="nextMission()">▶ PRÓXIMA MISSÃO</div>
+      <div class="mc-finish-btn" id="mc-finish-btn" style="display:none" onclick="showVictory()">🏆 VER RESULTADO FINAL</div>
+    </div>
+  </div>
+
+  <!-- VICTORY -->
+  <div id="victory-screen" class="screen">
+    <div class="victory-container">
+      <div class="victory-glitch" data-text="MESTRE DO TERMINAL">MESTRE DO TERMINAL</div>
+      <div class="victory-subtitle">Você completou todas as missões de infiltração.</div>
+      <div class="victory-stats">
+        <div class="vstat"><span class="vstat-label">XP TOTAL</span><span class="vstat-val accent" id="v-xp">0</span></div>
+        <div class="vstat"><span class="vstat-label">PRECISÃO</span><span class="vstat-val" id="v-acc">—</span></div>
+        <div class="vstat"><span class="vstat-label">RANK FINAL</span><span class="vstat-val accent" id="v-rank">—</span></div>
+      </div>
+      <div class="victory-achievements" id="victory-achievements"></div>
+      <button class="victory-restart" onclick="restartGame()">↺ NOVA SESSÃO</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

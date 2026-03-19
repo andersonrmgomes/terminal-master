@@ -162,9 +162,9 @@ function showOSBoot(os, onDone) {
 }
 
 // ─── INIT ───────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-  startBios();
-});
+// startBios() is called by firebase.js after successful login
+// Exposed globally so firebase.js can call it
+window.startBios = startBios;
 
 // Expose to main.js
 window.showOSBoot = showOSBoot;

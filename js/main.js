@@ -103,25 +103,38 @@ function saveState() {
   if (G.pack) {
     G.progress[G.pack] = { missionIndex: G.missionIndex, correct: G.correct, attempts: G.attempts, os: G.os };
   }
-  localStorage.setItem('tm_save', JSON.stringify({
+  const data = {
     progress: G.progress,
     xp: G.xp, level: G.level,
     grubOs: G.grubOs,
     achievements: [...G.unlockedAchievements],
-  }));
+  };
+  // Firebase (principal) + localStorage (fallback offline)
+  if (window.fbSave && window.FB && window.FB.user) {
+    window.fbSave(data);
+  }
+  try { localStorage.setItem('tm_save', JSON.stringify(data)); } catch(e) {}
 }
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem('tm_save');
-    if (!raw) return;
-    const s = JSON.parse(raw);
-    G.progress = s.progress || {};
-    G.xp = s.xp || 0;
-    G.level = s.level || 1;
-    G.grubOs = s.grubOs || null;
-    G.unlockedAchievements = new Set(s.achievements || []);
-  } catch (e) { console.warn('Save corrompido, resetando.'); }
+async function loadState() {
+  let s = null;
+  // 1. Tentar Firebase
+  if (window.fbLoad && window.FB && window.FB.user) {
+    try { s = await window.fbLoad(); } catch(e) {}
+  }
+  // 2. Fallback: localStorage
+  if (!s) {
+    try {
+      const raw = localStorage.getItem('tm_save');
+      if (raw) s = JSON.parse(raw);
+    } catch(e) {}
+  }
+  if (!s) return;
+  G.progress             = s.progress || {};
+  G.xp                   = s.xp || 0;
+  G.level                = s.level || 1;
+  G.grubOs               = s.grubOs || null;
+  G.unlockedAchievements = new Set(s.achievements || []);
 }
 
 // ─── BOOT ──────────────────────────────────────────
@@ -166,12 +179,13 @@ function afterBoot() {
     bs.style.display = 'none';
     bs.style.opacity = '';
     bs.style.transition = '';
-    loadState();
-    if (G.grubOs) {
-      showDesktop();
-    } else {
-      showGrub();
-    }
+    loadState().then(() => {
+      if (G.grubOs) {
+        showDesktop();
+      } else {
+        showGrub();
+      }
+    });
   }, 400);
 }
 
@@ -1177,8 +1191,17 @@ function openStartMenu() {
 
   document.getElementById('desktop-screen').appendChild(menu);
 
-  // Animate in
-  requestAnimationFrame(() => menu.classList.add('open'));
+  // Inject username from Firebase
+  requestAnimationFrame(() => {
+    menu.classList.add('open');
+    const uname = (window.FB && window.FB.user)
+      ? (window.FB.user.displayName || window.FB.user.email || 'Agente GHOST')
+      : 'Agente GHOST';
+    const winEl = menu.querySelector('#sm-win-username');
+    const fedEl = menu.querySelector('#sm-fed-username');
+    if (winEl) winEl.textContent = uname;
+    if (fedEl) fedEl.textContent = uname;
+  });
 
   // Close on outside click
   setTimeout(() => {
@@ -1236,11 +1259,12 @@ function buildWin11Menu() {
       <div class="sm-rec-item"><span>📡</span><span>network_scan.log</span></div>
     </div>
     <div class="sm-win11-footer">
-      <div class="sm-user">
+      <div class="sm-user" title="Sair da conta" onclick="closeStartMenu();fbLogout()">
         <span class="sm-user-icon">👤</span>
-        <span class="sm-user-name">Agente GHOST</span>
+        <span class="sm-user-name" id="sm-win-username">Agente GHOST</span>
       </div>
       <div class="sm-power-group">
+        <button class="sm-power-btn" title="Sair da conta" onclick="closeStartMenu();fbLogout()">🚪 Sair</button>
         <button class="sm-power-btn" title="Reiniciar" onclick="closeStartMenu();rebootSystem()">⏻ Reiniciar</button>
       </div>
     </div>`;
@@ -1288,11 +1312,12 @@ function buildFedoraMenu() {
     </div>
     <div class="sm-divider"></div>
     <div class="sm-fedora-footer">
-      <div class="sm-user">
+      <div class="sm-user" title="Sair da conta" onclick="closeStartMenu();fbLogout()">
         <span class="sm-user-icon">👤</span>
-        <span class="sm-user-name">ghost</span>
+        <span class="sm-user-name" id="sm-fed-username">ghost</span>
       </div>
       <div class="sm-power-group">
+        <button class="sm-power-btn" title="Sair da conta" onclick="closeStartMenu();fbLogout()">🚪 Sair</button>
         <button class="sm-power-btn" title="Reiniciar" onclick="closeStartMenu();rebootSystem()">⏻ Reiniciar</button>
       </div>
     </div>`;
@@ -1300,8 +1325,15 @@ function buildFedoraMenu() {
 
 function rebootSystem() {
   G.grubOs = null; G.os = null; G.pack = null;
-  localStorage.removeItem('tm_save');
-  location.reload();
+  if (window.fbDeleteSave) {
+    window.fbDeleteSave().finally(() => {
+      try { localStorage.removeItem('tm_save'); } catch(e) {}
+      location.reload();
+    });
+  } else {
+    try { localStorage.removeItem('tm_save'); } catch(e) {}
+    location.reload();
+  }
 }
 
 function clearTerminal() { $('terminal-output').innerHTML = ''; focusInput(); }

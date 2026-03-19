@@ -1,25 +1,36 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TERMINAL::MASTER — Hacking Protocol</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&family=Inter:wght@400;500;600&display=swap"
-    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
-
 <body>
 
   <canvas id="matrix-canvas"></canvas>
   <div class="scanlines"></div>
 
+  <!-- ══════════════ BIOS SCREEN ══════════════ -->
+  <div id="bios-screen" class="screen active">
+    <div class="bios-content">
+      <div class="bios-header">
+        <span>PHANTOM BIOS</span> v2.06 — Copyright (C) 2024 Phantom Systems Ltd.
+      </div>
+      <div id="bios-log"></div>
+      <div class="bios-progress-row" id="bios-progress-row" style="display:none">
+        <span style="color:#888;font-size:12px">POST</span>
+        <div class="bios-bar-outer"><div class="bios-bar-fill" id="bios-bar"></div></div>
+        <span id="bios-pct" style="color:#888;font-size:12px;min-width:36px">0%</span>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════ BOOT SCREEN ══════════════ -->
-  <div id="boot-screen" class="screen active">
+  <div id="boot-screen" class="screen">
     <div class="boot-container">
       <div class="boot-logo">
         <div class="logo-glitch" data-text="TERMINAL::MASTER">TERMINAL::MASTER</div>
@@ -39,10 +50,10 @@
       <div class="grub-brand">GNU GRUB version 2.06</div>
       <div class="grub-box" id="grub-box">
         <div class="grub-item active" data-os="linux" onmouseover="selectGrubMouse(0)" onclick="bootGrubOS()">
-          <span class="grub-arrow">*</span> GNU/Linux — Advanced Server (Terminal::Master)
+          <span class="grub-arrow">*</span> Fedora Linux 41 (Workstation Edition) — Kernel 6.8.9
         </div>
         <div class="grub-item" data-os="windows" onmouseover="selectGrubMouse(1)" onclick="bootGrubOS()">
-          <span class="grub-arrow"> </span> Windows Boot Manager (Phantom OS Mode)
+          <span class="grub-arrow"> </span> Windows Boot Manager — Windows 11 Pro (Phantom Mode)
         </div>
       </div>
       <div class="grub-footer">
@@ -50,6 +61,11 @@
         <span id="grub-timer-msg">Sistema iniciará automaticamente em <span id="grub-timer">10</span>s.</span>
       </div>
     </div>
+  </div>
+
+  <!-- ══════════════ OS BOOT LOADING SCREEN ══════════════ -->
+  <div id="os-boot-screen">
+    <!-- content injected by JS based on OS choice -->
   </div>
 
   <!-- ══════════════ DESKTOP ENVIRONMENT ══════════════ -->
@@ -66,7 +82,7 @@
         <div class="taskbar-stat" id="taskbar-xp">XP: 0</div>
         <div class="taskbar-stat" id="taskbar-rank">ROOKIE</div>
         <div class="taskbar-clock" id="taskbar-clock">00:00</div>
-        <button class="taskbar-btn" title="Reiniciar sistema" onclick="rebootSystem()">⏻</button>
+        <button class="taskbar-btn" title="Reiniciar sistema">⏻</button>
       </div>
     </div>
 
@@ -75,7 +91,7 @@
       <div id="desktop-icons"></div>
     </div>
 
-    <!-- ══ GAME WINDOW (folder-window) ══ -->
+    <!-- ══ GAME WINDOW ══ -->
     <div id="game-window" class="folder-window" style="display:none;">
       <div class="window-titlebar" id="window-titlebar">
         <div class="titlebar-left">
@@ -88,7 +104,6 @@
       </div>
 
       <div class="window-content" id="game-window-content">
-
         <!-- HUD -->
         <div class="hud-top">
           <div class="hud-left">
@@ -127,7 +142,6 @@
 
         <!-- Main layout -->
         <div class="main-layout">
-
           <!-- LEFT: Mission briefing -->
           <div class="panel mission-panel">
             <div class="panel-header">
@@ -172,8 +186,7 @@
                 <span class="prompt" id="prompt-text">infiltrado@server:~$</span>
                 <div class="input-wrapper">
                   <span class="input-ghost" id="input-ghost"></span>
-                  <input type="text" id="terminal-input" class="terminal-input" autocomplete="off" autocorrect="off"
-                    autocapitalize="off" spellcheck="false" />
+                  <input type="text" id="terminal-input" class="terminal-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
                   <span class="cursor-caret" id="cursor-caret"></span>
                 </div>
               </div>
@@ -221,14 +234,13 @@
               <div class="quick-ref" id="quick-ref"></div>
             </div>
           </div>
-
-        </div><!-- end main-layout -->
-      </div><!-- end window-content -->
+        </div>
+      </div>
 
       <div class="resize-handle" id="resize-handle"></div>
-    </div><!-- end game-window -->
+    </div>
 
-  </div><!-- end desktop-screen -->
+  </div>
 
   <!-- ══════════════ OVERLAYS ══════════════ -->
   <div id="achievements-overlay" class="overlay" onclick="closePanel('achievements')">
@@ -267,8 +279,7 @@
       <div class="mc-subtitle" id="mc-subtitle">Missão completada!</div>
       <div class="mc-xp" id="mc-xp">+50 XP</div>
       <button class="mc-next-btn" id="mc-next-btn" onclick="nextMission()">▶ PRÓXIMA MISSÃO</button>
-      <button class="mc-finish-btn" id="mc-finish-btn" style="display:none" onclick="showVictory()">🏆 VER RESULTADO
-        FINAL</button>
+      <button class="mc-finish-btn" id="mc-finish-btn" style="display:none" onclick="showVictory()">🏆 VER RESULTADO FINAL</button>
     </div>
   </div>
 
@@ -278,11 +289,9 @@
       <div class="victory-glitch" data-text="MESTRE DO TERMINAL">MESTRE DO TERMINAL</div>
       <div class="victory-subtitle">Você completou todas as missões de infiltração.</div>
       <div class="victory-stats">
-        <div class="vstat"><span class="vstat-label">XP TOTAL</span><span class="vstat-val accent" id="v-xp">0</span>
-        </div>
+        <div class="vstat"><span class="vstat-label">XP TOTAL</span><span class="vstat-val accent" id="v-xp">0</span></div>
         <div class="vstat"><span class="vstat-label">PRECISÃO</span><span class="vstat-val" id="v-acc">—</span></div>
-        <div class="vstat"><span class="vstat-label">RANK FINAL</span><span class="vstat-val accent"
-            id="v-rank">—</span></div>
+        <div class="vstat"><span class="vstat-label">RANK FINAL</span><span class="vstat-val accent" id="v-rank">—</span></div>
       </div>
       <div class="victory-achievements" id="victory-achievements"></div>
       <button class="victory-restart" onclick="restartGame()">↺ VOLTAR AO DESKTOP</button>
@@ -291,6 +300,6 @@
 
   <script src="js/missions.js"></script>
   <script src="js/main.js"></script>
+  <script src="js/boot.js"></script>
 </body>
-
 </html>

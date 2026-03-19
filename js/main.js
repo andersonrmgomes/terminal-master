@@ -158,14 +158,21 @@ function boot() {
 }
 
 function afterBoot() {
-  $('boot-screen').classList.remove('active');
-  $('boot-screen').style.display = 'none';
-  loadState();
-  if (G.grubOs) {
-    showDesktop();
-  } else {
-    showGrub();
-  }
+  const bs = $('boot-screen');
+  bs.style.opacity = '0';
+  bs.style.transition = 'opacity 0.4s ease';
+  setTimeout(() => {
+    bs.classList.remove('active');
+    bs.style.display = 'none';
+    bs.style.opacity = '';
+    bs.style.transition = '';
+    loadState();
+    if (G.grubOs) {
+      showDesktop();
+    } else {
+      showGrub();
+    }
+  }, 400);
 }
 
 // ─── GRUB ──────────────────────────────────────────
@@ -224,10 +231,23 @@ function bootGrubOS() {
   const items = document.querySelectorAll('.grub-item');
   if (!items.length) return;
   G.grubOs = items[grubIdx].getAttribute('data-os');
-  $('grub-screen').classList.remove('active');
-  $('grub-screen').style.display = 'none';
+  // Fade out grub
+  const gs = $('grub-screen');
+  gs.style.opacity = '0';
+  gs.style.transition = 'opacity 0.5s ease';
   saveState();
-  showDesktop();
+  setTimeout(() => {
+    gs.classList.remove('active');
+    gs.style.display = 'none';
+    gs.style.opacity = '';
+    gs.style.transition = '';
+    // Show OS boot animation, then go to desktop
+    if (window.showOSBoot) {
+      showOSBoot(G.grubOs, showDesktop);
+    } else {
+      showDesktop();
+    }
+  }, 500);
 }
 
 // ─── DESKTOP ───────────────────────────────────────
@@ -240,12 +260,17 @@ function showDesktop() {
   desk.className = 'screen'; // reset
   desk.classList.add('active', 'os-' + G.grubOs);
   desk.style.display = 'flex';
-  desk.setAttribute('data-os-label', G.grubOs === 'linux' ? 'GNU/LINUX' : 'WINDOWS');
+  desk.setAttribute('data-os-label', G.grubOs === 'linux' ? 'Fedora Linux 41' : 'Windows 11');
+  // Fade in desktop
+  desk.style.opacity = '0';
+  setTimeout(() => { desk.style.transition = 'opacity 0.6s ease'; desk.style.opacity = '1'; }, 30);
+  setTimeout(() => { desk.style.transition = ''; }, 700);
 
   // Taskbar branding
-  $('taskbar-logo').textContent = G.grubOs === 'linux' ? '🐧' : '🪟';
-  $('taskbar-os-name').textContent = G.grubOs === 'linux' ? 'PHANTOM/LINUX' : 'PHANTOM/WIN';
-  $('taskbar-os-name').style.color = G.grubOs === 'linux' ? 'var(--green)' : 'var(--cyan)';
+  $('taskbar-logo').textContent = G.grubOs === 'linux' ? '' : '';
+  $('taskbar-os-name').textContent = G.grubOs === 'linux' ? 'Fedora' : 'Iniciar';
+  $('taskbar-os-name').style.color = G.grubOs === 'linux' ? 'rgba(255,255,255,.75)' : 'rgba(255,255,255,.75)';
+  setupStartMenu();
   $('taskbar-xp').textContent = 'XP: ' + G.xp;
   $('taskbar-rank').textContent = RANKS[Math.min(G.level - 1, RANKS.length - 1)];
   $('taskbar-windows').innerHTML = '';
@@ -262,7 +287,9 @@ function buildDesktopIcons() {
   let col = 0, row = 0;
   const COL_W = 100, ROW_H = 110;
   const PAD_L = 24, PAD_T = 16;
-  const MAX_ROWS = Math.floor((window.innerHeight - 80) / ROW_H);
+  // Linux has dock at bottom (52px), Windows has taskbar at bottom (48px)
+  const dockH = G.grubOs === 'linux' ? 52 : 48;
+  const MAX_ROWS = Math.floor((window.innerHeight - dockH - 16) / ROW_H);
 
   packs.forEach(p => {
     const el = createFolderIcon(p);
@@ -275,16 +302,7 @@ function buildDesktopIcons() {
     if (row >= MAX_ROWS) { row = 0; col++; }
   });
 
-  // Reboot icon
-  const rbt = document.createElement('div');
-  rbt.className = 'folder';
-  rbt.style.left = (PAD_L + col * COL_W) + 'px';
-  rbt.style.top = (PAD_T + row * ROW_H) + 'px';
-  rbt.innerHTML = '<span class="folder-icon">⚡</span><span class="folder-name" style="color:#ffb700">REBOOT</span>';
-  rbt.title = 'Duplo clique para reiniciar o sistema';
-  rbt.addEventListener('dblclick', rebootSystem);
-  makeDraggable(rbt);
-  container.appendChild(rbt);
+
 }
 
 function createFolderIcon(p) {
@@ -1118,6 +1136,168 @@ function restartGame() {
   showDesktop();
 }
 
+// ─── START MENU ────────────────────────────────────
+function setupStartMenu() {
+  const logo = $('taskbar-logo');
+  // Remove old listeners by cloning
+  const newLogo = logo.cloneNode(true);
+  logo.parentNode.replaceChild(newLogo, logo);
+  newLogo.addEventListener('click', toggleStartMenu);
+
+  // Also remove power button onclick attr, wire it
+  const pwrBtn = document.querySelector('.taskbar-btn[title="Reiniciar sistema"]');
+  if (pwrBtn) {
+    const nb = pwrBtn.cloneNode(true);
+    nb.removeAttribute('onclick');
+    nb.addEventListener('click', () => {
+      closeStartMenu();
+      rebootSystem();
+    });
+    pwrBtn.parentNode.replaceChild(nb, pwrBtn);
+  }
+}
+
+function toggleStartMenu() {
+  const existing = document.getElementById('start-menu');
+  if (existing) { closeStartMenu(); return; }
+  openStartMenu();
+}
+
+function openStartMenu() {
+  closeStartMenu();
+  const menu = document.createElement('div');
+  menu.id = 'start-menu';
+  menu.className = 'start-menu os-' + G.grubOs;
+
+  if (G.grubOs === 'windows') {
+    menu.innerHTML = buildWin11Menu();
+  } else {
+    menu.innerHTML = buildFedoraMenu();
+  }
+
+  document.getElementById('desktop-screen').appendChild(menu);
+
+  // Animate in
+  requestAnimationFrame(() => menu.classList.add('open'));
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', outsideMenuClose, { once: true });
+  }, 10);
+}
+
+function outsideMenuClose(e) {
+  if (!e.target.closest('#start-menu') && !e.target.closest('#taskbar-logo')) {
+    closeStartMenu();
+  }
+}
+
+function closeStartMenu() {
+  const m = document.getElementById('start-menu');
+  if (!m) return;
+  m.classList.remove('open');
+  setTimeout(() => m.remove(), 220);
+}
+
+function buildWin11Menu() {
+  const packs = PACKS['windows'] || [];
+  const packItems = packs.map(p => {
+    const prog = G.progress[p.id];
+    const done = prog ? prog.missionIndex : 0;
+    const total = (window.GameData.MISSIONS[p.id] || []).length;
+    const pct = total > 0 ? Math.round(done / total * 100) : 0;
+    return `<div class="sm-app-item" onclick="closeStartMenu();openGameWindow('${p.id}','windows')">
+      <span class="sm-app-icon">${p.icon}</span>
+      <span class="sm-app-label">${p.name}<span class="sm-app-pct">${pct}%</span></span>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="sm-win11-header">
+      <input class="sm-search" type="text" placeholder="Pesquisar..." disabled />
+    </div>
+    <div class="sm-section-label">Fixados</div>
+    <div class="sm-apps-grid">
+      ${packItems}
+      <div class="sm-app-item" onclick="closeStartMenu()">
+        <span class="sm-app-icon">⚙️</span>
+        <span class="sm-app-label">Configurações</span>
+      </div>
+      <div class="sm-app-item" onclick="closeStartMenu()">
+        <span class="sm-app-icon">📂</span>
+        <span class="sm-app-label">Explorador</span>
+      </div>
+    </div>
+    <div class="sm-divider"></div>
+    <div class="sm-section-label">Recomendados</div>
+    <div class="sm-rec-list">
+      <div class="sm-rec-item"><span>📄</span><span>missao_briefing.txt</span></div>
+      <div class="sm-rec-item"><span>🔐</span><span>phantom_key.enc</span></div>
+      <div class="sm-rec-item"><span>📡</span><span>network_scan.log</span></div>
+    </div>
+    <div class="sm-win11-footer">
+      <div class="sm-user">
+        <span class="sm-user-icon">👤</span>
+        <span class="sm-user-name">Agente GHOST</span>
+      </div>
+      <div class="sm-power-group">
+        <button class="sm-power-btn" title="Reiniciar" onclick="closeStartMenu();rebootSystem()">⏻ Reiniciar</button>
+      </div>
+    </div>`;
+}
+
+function buildFedoraMenu() {
+  const packs = PACKS['linux'] || [];
+  const packItems = packs.map(p => {
+    const prog = G.progress[p.id];
+    const done = prog ? prog.missionIndex : 0;
+    const total = (window.GameData.MISSIONS[p.id] || []).length;
+    const pct = total > 0 ? Math.round(done / total * 100) : 0;
+    return `<div class="sm-fedora-item" onclick="closeStartMenu();openGameWindow('${p.id}','linux')">
+      <span class="sm-app-icon">${p.icon}</span>
+      <div class="sm-fedora-item-info">
+        <span class="sm-fedora-item-name">${p.name}</span>
+        <span class="sm-fedora-item-sub">${p.desc} — ${pct}%</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="sm-fedora-header">
+      <div class="sm-fedora-search-wrap">
+        <span class="sm-fedora-search-icon">🔍</span>
+        <input class="sm-fedora-search" type="text" placeholder="Pesquisar aplicativos..." disabled />
+      </div>
+    </div>
+    <div class="sm-fedora-apps">
+      ${packItems}
+      <div class="sm-fedora-item" onclick="closeStartMenu()">
+        <span class="sm-app-icon">⚙️</span>
+        <div class="sm-fedora-item-info">
+          <span class="sm-fedora-item-name">Configurações</span>
+          <span class="sm-fedora-item-sub">Sistema GNOME</span>
+        </div>
+      </div>
+      <div class="sm-fedora-item" onclick="closeStartMenu()">
+        <span class="sm-app-icon">📁</span>
+        <div class="sm-fedora-item-info">
+          <span class="sm-fedora-item-name">Arquivos</span>
+          <span class="sm-fedora-item-sub">Nautilus</span>
+        </div>
+      </div>
+    </div>
+    <div class="sm-divider"></div>
+    <div class="sm-fedora-footer">
+      <div class="sm-user">
+        <span class="sm-user-icon">👤</span>
+        <span class="sm-user-name">ghost</span>
+      </div>
+      <div class="sm-power-group">
+        <button class="sm-power-btn" title="Reiniciar" onclick="closeStartMenu();rebootSystem()">⏻ Reiniciar</button>
+      </div>
+    </div>`;
+}
+
 function rebootSystem() {
   G.grubOs = null; G.os = null; G.pack = null;
   localStorage.removeItem('tm_save');
@@ -1153,5 +1333,3 @@ document.addEventListener('DOMContentLoaded', () => {
   const win = $('game-window'), bar = $('window-titlebar');
   if (win && bar) makeDraggable(win, bar);
 });
-
-boot();

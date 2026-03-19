@@ -35,7 +35,69 @@
 const $ = id => document.getElementById(id);
 
 // ─── GAME STATE ────────────────────────────────────
+
+const AudioEngine = {
+  ctx: null,
+  init() {
+    if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+  },
+  playTone(freq, type, duration, vol=0.05) {
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+      gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + duration);
+    } catch(e) {}
+  },
+  keypress() { this.playTone(800, 'sine', 0.05, 0.02); },
+  success() { this.playTone(600, 'triangle', 0.1, 0.05); setTimeout(() => this.playTone(800, 'triangle', 0.15, 0.05), 100); },
+  error() { this.playTone(150, 'sawtooth', 0.3, 0.1); }
+};
+
+function saveGameState() {
+  if (G.pack) {
+    if (!G.progress) G.progress = {};
+    G.progress[G.pack] = {
+      missionIndex: G.missionIndex,
+      correct: G.correct,
+      attempts: G.attempts,
+      os: G.os
+    };
+  }
+  const state = {
+    progress: G.progress || {},
+    global_xp: G.xp,
+    level: G.level,
+    unlockedAchievements: [...G.unlockedAchievements]
+  };
+  localStorage.setItem('terminal_master_save', JSON.stringify(state));
+}
+
+function loadGameState() {
+  const saved = localStorage.getItem('terminal_master_save');
+  if (saved) {
+    try {
+      const state = JSON.parse(saved);
+      G.progress = state.progress || {};
+      G.xp = state.global_xp || state.xp || 0;
+      G.level = state.level || 1;
+      G.unlockedAchievements = new Set(state.unlockedAchievements || []);
+    } catch(e){}
+  } else {
+    G.progress = {};
+  }
+}
+
 const G = {
+  pack: null,
   os: null,
   missionIndex: 0,
   xp: 0, level: 1,
@@ -43,6 +105,7 @@ const G = {
   hintShown: false, failCount: 0,
   unlockedAchievements: new Set(),
   history: [], historyIdx: -1,
+  progress: {}
 };
 
 const XP_LEVELS = [0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200];
@@ -51,480 +114,13 @@ const RANKS = ['ROOKIE', 'INFILTRADO', 'EXPLORADOR', 'HACKER', 'ESPECIALISTA', '
 const termState = { cwd: '~', prompt: 'infiltrado@server:~$' };
 
 // ─── MISSIONS ──────────────────────────────────────
-const MISSIONS = {
-  linux: [
-    {
-      phase: 'FASE 1 — BÁSICO', icon: '🗺️', title: 'PRIMEIRA CONEXÃO',
-      desc: 'Você acaba de estabelecer acesso remoto ao servidor alvo. Descubra onde está no sistema.',
-      objective: 'Descubra seu diretório atual',
-      command: 'pwd',
-      learn: 'O <strong>pwd</strong> (Print Working Directory) exibe o caminho completo do diretório atual.',
-      hint: '3 letras: pwd',
-      simulate: () => [{ t: 'out', text: '/home/infiltrado' }],
-      xp: 40,
-    },
-    {
-      phase: 'FASE 1 — BÁSICO', icon: '📂', title: 'MAPEAMENTO DO TERRENO',
-      desc: 'Liste todos os arquivos incluindo ocultos — os dados criptografados podem estar disfarçados.',
-      objective: 'Liste arquivos incluindo ocultos',
-      command: 'ls -la',
-      learn: '<strong>ls -l</strong> exibe detalhes, <strong>-a</strong> mostra arquivos ocultos (começam com ponto).',
-      hint: 'ls com flags -l e -a combinadas: ls -la',
-      simulate: () => [
-        { t: 'out', text: 'total 48' },
-        { t: 'out', text: 'drwxr-xr-x  4 infiltrado root 4096 Jun 12 03:41 .' },
-        { t: 'out', text: 'drwxr-xr-x 18 root       root 4096 Jun 12 01:00 ..' },
-        { t: 'out', text: '-rw-------  1 infiltrado root  220 Jun 12 01:00 .bash_history' },
-        { t: 'out', text: 'drwxr-xr-x  2 infiltrado root 4096 Jun 12 03:41 secret' },
-        { t: 'out', text: '-rw-r--r--  1 infiltrado root  156 Jun 12 03:40 readme.txt' },
-        { t: 'suc', text: '↳ Diretório "secret" localizado!' },
-      ],
-      xp: 50,
-    },
-    {
-      phase: 'FASE 1 — BÁSICO', icon: '🚪', title: 'ACESSO AO DIRETÓRIO SECRETO',
-      desc: 'Há um diretório "secret". Navegue até ele.',
-      objective: 'Entre no diretório "secret"',
-      command: 'cd secret',
-      learn: '<strong>cd</strong> (Change Directory) navega entre diretórios. <strong>cd ..</strong> volta um nível.',
-      hint: 'cd seguido do nome: cd secret',
-      simulate: (s) => { s.cwd = '~/secret'; s.prompt = 'infiltrado@server:~/secret$'; return [{ t: 'sys', text: '📁 Entrando em /home/infiltrado/secret...' }]; },
-      xp: 30,
-    },
-    {
-      phase: 'FASE 1 — BÁSICO', icon: '🔍', title: 'RECONHECIMENTO INTERNO',
-      desc: 'Liste o conteúdo deste diretório secreto.',
-      objective: 'Liste o conteúdo do diretório atual',
-      command: 'ls',
-      learn: '<strong>ls</strong> sem flags exibe uma listagem simples do diretório atual.',
-      hint: 'Só: ls',
-      simulate: () => [
-        { t: 'out', text: 'arquivo_criptografado.enc  chave.key  logs.txt  readme_hack.md' },
-        { t: 'suc', text: '↳ 4 arquivos encontrados!' },
-      ],
-      xp: 30,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '📖', title: 'LEITURA DO MANIFESTO',
-      desc: 'Leia o conteúdo de readme_hack.md sem abrir um editor.',
-      objective: 'Exiba o conteúdo de readme_hack.md',
-      command: 'cat readme_hack.md',
-      learn: '<strong>cat</strong> exibe o conteúdo de arquivos no terminal. Para arquivos longos, use <strong>less</strong>.',
-      hint: 'cat seguido do nome: cat readme_hack.md',
-      simulate: () => [
-        { t: 'out', text: '# OPERAÇÃO PHANTOM KEY' },
-        { t: 'out', text: '' },
-        { t: 'out', text: 'Os arquivos .enc foram cifrados com AES-256.' },
-        { t: 'out', text: 'A chave está em chave.key — só "admin" pode ler.' },
-        { t: 'suc', text: '↳ Próximo passo: verificar permissões.' },
-      ],
-      xp: 60,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '🏗️', title: 'CRIANDO COBERTURA',
-      desc: 'Crie um diretório de trabalho chamado "tools".',
-      objective: 'Crie um diretório chamado "tools"',
-      command: 'mkdir tools',
-      learn: '<strong>mkdir</strong> cria diretórios. Use <strong>mkdir -p</strong> para criar aninhados de uma vez.',
-      hint: 'mkdir seguido do nome: mkdir tools',
-      simulate: () => [{ t: 'suc', text: '✓ Diretório "tools" criado.' }],
-      xp: 40,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '📝', title: 'RASTRO FALSO',
-      desc: 'Crie um arquivo de log falso usando redirecionamento.',
-      objective: 'Crie "decoy.log" com o texto "Sistema normal"',
-      command: 'echo "Sistema normal" > decoy.log',
-      learn: '<strong>echo</strong> imprime texto. <strong>></strong> redireciona para arquivo (sobrescreve). <strong>>></strong> adiciona ao final.',
-      hint: 'echo "texto" > arquivo: echo "Sistema normal" > decoy.log',
-      simulate: () => [{ t: 'suc', text: '✓ decoy.log criado.' }, { t: 'dim', text: '  Conteúdo: "Sistema normal"' }],
-      xp: 60,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '🔐', title: 'VERIFICANDO PERMISSÕES',
-      desc: 'Verifique as permissões detalhadas de chave.key.',
-      objective: 'Liste detalhes de chave.key',
-      command: 'ls -l chave.key',
-      learn: '<strong>ls -l arquivo</strong> mostra: permissões, dono, grupo, tamanho, data e nome.',
-      hint: 'ls -l com o nome do arquivo: ls -l chave.key',
-      simulate: () => [
-        { t: 'out', text: '-r-------- 1 admin admin 64 Jun 12 03:41 chave.key' },
-        { t: 'warn', text: '⚠ Apenas "admin" pode ler este arquivo.' },
-      ],
-      xp: 50,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '🔓', title: 'ESCALADA DE PERMISSÕES',
-      desc: 'Altere as permissões de chave.key para que qualquer usuário possa lê-lo.',
-      objective: 'Dê permissão de leitura para todos em chave.key',
-      command: 'chmod 644 chave.key',
-      learn: '<strong>chmod</strong> altera permissões. Octal: 4=r, 2=w, 1=x. <strong>644</strong>: dono(rw) grupo(r) outros(r).',
-      hint: 'chmod 644 chave.key',
-      simulate: () => [
-        { t: 'suc', text: '✓ Permissões alteradas: -rw-r--r-- chave.key' },
-        { t: 'suc', text: '🔑 Você pode ler a chave agora!' },
-      ],
-      xp: 80,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '🗝️', title: 'OBTENDO A CHAVE',
-      desc: 'Com permissões ajustadas, leia o conteúdo de chave.key.',
-      objective: 'Exiba o conteúdo de chave.key',
-      command: 'cat chave.key',
-      learn: 'Leitura de arquivos sensíveis é técnica comum em pen testing. Sempre obtenha autorização antes.',
-      hint: 'cat chave.key',
-      simulate: () => [
-        { t: 'out', text: '╔════════════════════════════════════════╗' },
-        { t: 'out', text: '║  PHANTOM KEY — AES-256 DECRYPTION     ║' },
-        { t: 'out', text: '╚════════════════════════════════════════╝' },
-        { t: 'out', text: 'KEY: 4f8a2b9c1e7d3f6a0b5c8d2e4f1a9b3c' },
-        { t: 'suc', text: '🏆 Chave obtida! Fase 2 concluída.' },
-      ],
-      xp: 70,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '📡', title: 'MONITORANDO PROCESSOS',
-      desc: 'Verifique os processos em execução para identificar agentes de segurança.',
-      objective: 'Liste os processos em execução',
-      command: 'ps aux',
-      learn: '<strong>ps aux</strong>: a=todos os usuários, u=detalhado, x=sem terminal. Veja PID, CPU e memória.',
-      hint: 'ps aux',
-      simulate: () => [
-        { t: 'out', text: 'USER       PID %CPU %MEM COMMAND' },
-        { t: 'out', text: 'root         1  0.0  0.1 /sbin/init' },
-        { t: 'out', text: 'admin      891  2.1  1.2 security-monitor' },
-        { t: 'out', text: 'admin      892  0.1  0.8 log-watcher' },
-        { t: 'warn', text: '⚠ "security-monitor" detectado (PID 891).' },
-      ],
-      xp: 70,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '🔎', title: 'CAÇA AO PADRÃO',
-      desc: 'Filtre logs.txt para encontrar apenas linhas com "ERRO".',
-      objective: 'Busque "ERRO" no arquivo logs.txt',
-      command: 'grep "ERRO" logs.txt',
-      learn: '<strong>grep</strong> filtra linhas com um padrão. Flags: <strong>-i</strong> ignora maiúsculas, <strong>-n</strong> mostra número da linha.',
-      hint: 'grep "padrão" arquivo: grep "ERRO" logs.txt',
-      simulate: () => [
-        { t: 'out', text: 'logs.txt:47: [ERRO] Acesso não autorizado: 192.168.1.99' },
-        { t: 'out', text: 'logs.txt:83: [ERRO] Falha de autenticação para "root"' },
-        { t: 'out', text: 'logs.txt:91: [ERRO] chave.key acessada — permissão modificada' },
-        { t: 'warn', text: '⚠ Sua ação foi registrada!' },
-      ],
-      xp: 80,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '⚡', title: 'O PODER DO PIPE',
-      desc: 'Encadeie comandos: liste processos e filtre apenas os da "admin".',
-      objective: 'Liste processos e filtre por "admin"',
-      command: 'ps aux | grep admin',
-      learn: 'O <strong>|</strong> (pipe) passa a saída de um comando como entrada de outro. Encadeie infinitos comandos.',
-      hint: 'ps aux | grep admin',
-      simulate: () => [
-        { t: 'out', text: 'admin  891  2.1  1.2 security-monitor --daemon' },
-        { t: 'out', text: 'admin  892  0.1  0.8 log-watcher /var/log/audit' },
-        { t: 'suc', text: '✓ Pipe executado. Processos do admin isolados.' },
-      ],
-      xp: 90,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '🕵️', title: 'BUSCA RECURSIVA',
-      desc: 'Procure todos os arquivos .enc no sistema inteiro.',
-      objective: 'Encontre todos arquivos .enc a partir da raiz',
-      command: 'find / -name "*.enc" 2>/dev/null',
-      learn: '<strong>find / -name "*.enc"</strong> busca recursivamente. <strong>2>/dev/null</strong> suprime erros de permissão.',
-      hint: 'find / -name "*.enc" 2>/dev/null',
-      simulate: () => [
-        { t: 'dim', text: 'Buscando em todo o sistema...' },
-        { t: 'out', text: '/home/infiltrado/secret/arquivo_criptografado.enc' },
-        { t: 'out', text: '/var/backup/sistema_backup.enc' },
-        { t: 'out', text: '/opt/phantom/dados_pessoais.enc' },
-        { t: 'suc', text: '🎯 3 arquivos .enc encontrados.' },
-      ],
-      xp: 100,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '🔬', title: 'CONTANDO EVIDÊNCIAS',
-      desc: 'Conte quantas linhas de ERRO existem nos logs.',
-      objective: 'Conte as linhas com "ERRO" em logs.txt',
-      command: 'grep -c "ERRO" logs.txt',
-      learn: '<strong>grep -c</strong> conta linhas com o padrão. Alternativa: <strong>grep "ERRO" logs.txt | wc -l</strong>.',
-      hint: 'grep -c "ERRO" logs.txt',
-      simulate: () => [
-        { t: 'out', text: '3' },
-        { t: 'suc', text: '✓ 3 entradas de erro. Relatório completo.' },
-      ],
-      xp: 80,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '🏴‍☠️', title: 'MISSÃO FINAL',
-      desc: 'Leia o arquivo .enc e filtre apenas a linha "PHANTOM" via pipe.',
-      objective: 'Exiba apenas a linha "PHANTOM" do arquivo .enc',
-      command: 'cat arquivo_criptografado.enc | grep "PHANTOM"',
-      learn: 'Parabéns! Próximos passos: <strong>awk</strong>, <strong>sed</strong> e <strong>bash scripting</strong> para automação.',
-      hint: 'cat arquivo_criptografado.enc | grep "PHANTOM"',
-      simulate: () => [
-        { t: 'out', text: '>>> PHANTOM ENCRYPTED PAYLOAD — OPERATION COMPLETE <<<' },
-        { t: 'out', text: '' },
-        { t: 'suc', text: '╔══════════════════════════════════════════╗' },
-        { t: 'suc', text: '║  🏆 OPERAÇÃO PHANTOM KEY — CONCLUÍDA!  ║' },
-        { t: 'suc', text: '╚══════════════════════════════════════════╝' },
-      ],
-      xp: 150,
-    },
-  ],
-
-  windows: [
-    {
-      phase: 'FASE 1 — BÁSICO', icon: '🗺️', title: 'PRIMEIRA CONEXÃO',
-      desc: 'Acesso ao sistema Windows estabelecido. Descubra em qual diretório você está.',
-      objective: 'Exiba o diretório atual',
-      command: 'cd',
-      learn: 'No CMD, <strong>cd</strong> sem argumentos exibe o diretório atual. No PowerShell use <strong>pwd</strong>.',
-      hint: 'Apenas: cd',
-      simulate: () => [{ t: 'out', text: 'C:\\Users\\Infiltrado' }],
-      xp: 40,
-    },
-    {
-      phase: 'FASE 1 — BÁSICO', icon: '📂', title: 'MAPEAMENTO DO TERRENO',
-      desc: 'Liste todos os arquivos com detalhes, incluindo ocultos.',
-      objective: 'Liste todos os arquivos com detalhes',
-      command: 'dir /a',
-      learn: '<strong>dir /a</strong> mostra arquivos com todos os atributos (incluindo ocultos e de sistema).',
-      hint: 'dir com flag /a: dir /a',
-      simulate: () => [
-        { t: 'out', text: ' Directory of C:\\Users\\Infiltrado' },
-        { t: 'out', text: '' },
-        { t: 'out', text: '12/06/2024  03:41    <DIR>     secret' },
-        { t: 'out', text: '12/06/2024  03:39          156 readme.txt' },
-        { t: 'out', text: '12/06/2024  03:38   <HIDDEN>   .credentials' },
-        { t: 'suc', text: '↳ Pasta "secret" e arquivo oculto detectados!' },
-      ],
-      xp: 50,
-    },
-    {
-      phase: 'FASE 1 — BÁSICO', icon: '🚪', title: 'ACESSO AO DIRETÓRIO SECRETO',
-      desc: 'Navegue até a pasta "secret".',
-      objective: 'Entre na pasta "secret"',
-      command: 'cd secret',
-      learn: '<strong>cd</strong> funciona igual ao Linux. Use <strong>cd ..</strong> para voltar, <strong>cd \\</strong> para a raiz.',
-      hint: 'cd secret',
-      simulate: (s) => { s.cwd = 'C:\\Users\\Infiltrado\\secret'; s.prompt = 'C:\\Users\\Infiltrado\\secret>'; return [{ t: 'sys', text: '📁 Entrando em C:\\Users\\Infiltrado\\secret...' }]; },
-      xp: 30,
-    },
-    {
-      phase: 'FASE 1 — BÁSICO', icon: '🔍', title: 'RECONHECIMENTO INTERNO',
-      desc: 'Liste o conteúdo desta pasta secreta.',
-      objective: 'Liste os arquivos da pasta atual',
-      command: 'dir',
-      learn: '<strong>dir</strong> sem flags lista arquivos com tamanho e data. Tab autocompleta nomes.',
-      hint: 'Apenas: dir',
-      simulate: () => [
-        { t: 'out', text: ' Directory of C:\\Users\\Infiltrado\\secret' },
-        { t: 'out', text: '' },
-        { t: 'out', text: '12/06/2024  03:41         2048 arquivo_criptografado.enc' },
-        { t: 'out', text: '12/06/2024  03:40           64 chave.key' },
-        { t: 'out', text: '12/06/2024  03:38         1024 logs.txt' },
-        { t: 'out', text: '12/06/2024  03:37           98 readme_hack.txt' },
-        { t: 'suc', text: '↳ 4 arquivos encontrados!' },
-      ],
-      xp: 30,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '📖', title: 'LEITURA DO MANIFESTO',
-      desc: 'Leia o conteúdo de readme_hack.txt diretamente no terminal.',
-      objective: 'Exiba o conteúdo de readme_hack.txt',
-      command: 'type readme_hack.txt',
-      learn: '<strong>type</strong> exibe arquivos texto (equivalente ao cat do Linux). PowerShell: <strong>Get-Content</strong>.',
-      hint: 'type readme_hack.txt',
-      simulate: () => [
-        { t: 'out', text: '# OPERACAO PHANTOM KEY' },
-        { t: 'out', text: '' },
-        { t: 'out', text: 'Os arquivos .enc foram cifrados com AES-256.' },
-        { t: 'out', text: 'A chave esta em chave.key — so SYSTEM tem acesso.' },
-        { t: 'suc', text: '↳ Próximo passo: verificar permissões NTFS.' },
-      ],
-      xp: 60,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '🏗️', title: 'CRIANDO COBERTURA',
-      desc: 'Crie uma pasta de trabalho chamada "tools".',
-      objective: 'Crie a pasta "tools"',
-      command: 'mkdir tools',
-      learn: '<strong>mkdir</strong> funciona no CMD e no PowerShell para criar diretórios.',
-      hint: 'mkdir tools',
-      simulate: () => [{ t: 'suc', text: '✓ Pasta "tools" criada.' }],
-      xp: 40,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '📝', title: 'RASTRO FALSO',
-      desc: 'Crie um arquivo de log falso para enganar o time de segurança.',
-      objective: 'Crie "decoy.log" com o texto "Sistema OK"',
-      command: 'echo Sistema OK > decoy.log',
-      learn: '<strong>echo</strong> no CMD imprime texto. <strong>></strong> redireciona para arquivo. <strong>>></strong> adiciona.',
-      hint: 'echo Sistema OK > decoy.log',
-      simulate: () => [{ t: 'suc', text: '✓ decoy.log criado.' }, { t: 'dim', text: '  Conteúdo: "Sistema OK"' }],
-      xp: 60,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '🔐', title: 'VERIFICANDO PERMISSÕES NTFS',
-      desc: 'Verifique as permissões NTFS do arquivo chave.key.',
-      objective: 'Verifique permissões de chave.key',
-      command: 'icacls chave.key',
-      learn: '<strong>icacls</strong> exibe permissões NTFS. F=Full, M=Modify, R=Read, W=Write.',
-      hint: 'icacls chave.key',
-      simulate: () => [
-        { t: 'out', text: 'chave.key NT AUTHORITY\\SYSTEM:(F)' },
-        { t: 'out', text: '          BUILTIN\\Administrators:(R)' },
-        { t: 'warn', text: '⚠ Apenas SYSTEM e Admins têm acesso.' },
-      ],
-      xp: 50,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '🔓', title: 'CONCEDENDO ACESSO',
-      desc: 'Conceda permissão de leitura para "Everyone" em chave.key.',
-      objective: 'Conceda acesso a "Everyone" em chave.key',
-      command: 'icacls chave.key /grant Everyone:R',
-      learn: '<strong>icacls /grant usuario:permissão</strong> adiciona permissões. /deny nega, /remove remove.',
-      hint: 'icacls chave.key /grant Everyone:R',
-      simulate: () => [
-        { t: 'out', text: 'processed file: chave.key' },
-        { t: 'suc', text: '✓ Permissão de leitura concedida para Everyone!' },
-      ],
-      xp: 80,
-    },
-    {
-      phase: 'FASE 2 — INTERMEDIÁRIO', icon: '🗝️', title: 'OBTENDO A CHAVE',
-      desc: 'Com acesso concedido, leia o conteúdo de chave.key.',
-      objective: 'Exiba o conteúdo de chave.key',
-      command: 'type chave.key',
-      learn: 'Após modificar permissões NTFS, o acesso é imediato. PowerShell: Get-Content chave.key.',
-      hint: 'type chave.key',
-      simulate: () => [
-        { t: 'out', text: '╔════════════════════════════════════════╗' },
-        { t: 'out', text: '║  PHANTOM KEY — AES-256 DECRYPTION     ║' },
-        { t: 'out', text: '╚════════════════════════════════════════╝' },
-        { t: 'out', text: 'KEY: 4f8a2b9c1e7d3f6a0b5c8d2e4f1a9b3c' },
-        { t: 'suc', text: '🏆 Chave obtida! Fase 2 concluída.' },
-      ],
-      xp: 70,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '📡', title: 'MONITORANDO PROCESSOS',
-      desc: 'Verifique processos em execução para detectar softwares de monitoramento.',
-      objective: 'Liste todos os processos em execução',
-      command: 'tasklist',
-      learn: '<strong>tasklist</strong> lista processos ativos (equivalente ao ps aux). PowerShell: <strong>Get-Process</strong>.',
-      hint: 'tasklist',
-      simulate: () => [
-        { t: 'out', text: 'Image Name              PID  Mem Usage' },
-        { t: 'out', text: '====================== ==== ==========' },
-        { t: 'out', text: 'svchost.exe             892    8.412 K' },
-        { t: 'out', text: 'SecurityMonitor.exe    1341   12.048 K' },
-        { t: 'out', text: 'LogWatcher.exe         1342    6.128 K' },
-        { t: 'warn', text: '⚠ SecurityMonitor.exe detectado (PID 1341)!' },
-      ],
-      xp: 70,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '🔎', title: 'FILTRAGEM DE LOGS',
-      desc: 'Filtre logs.txt para linhas com "ERRO" usando findstr.',
-      objective: 'Busque "ERRO" em logs.txt',
-      command: 'findstr "ERRO" logs.txt',
-      learn: '<strong>findstr</strong> é o grep do Windows. Flags: <strong>/i</strong> ignora maiúsculas, <strong>/n</strong> mostra linha.',
-      hint: 'findstr "ERRO" logs.txt',
-      simulate: () => [
-        { t: 'out', text: 'logs.txt:47: [ERRO] Acesso nao autorizado: 192.168.1.99' },
-        { t: 'out', text: 'logs.txt:83: [ERRO] Falha de autenticacao para "Administrator"' },
-        { t: 'out', text: 'logs.txt:91: [ERRO] chave.key acessada — permissao modificada' },
-        { t: 'warn', text: '⚠ Sua ação foi registrada!' },
-      ],
-      xp: 80,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '⚡', title: 'O PODER DO PIPE',
-      desc: 'Filtre o tasklist para mostrar apenas processos com "Security" no nome.',
-      objective: 'Filtre processos com "Security" no nome',
-      command: 'tasklist | findstr "Security"',
-      learn: 'O pipe <strong>|</strong> funciona no CMD. No PowerShell passa objetos reais, não só texto.',
-      hint: 'tasklist | findstr "Security"',
-      simulate: () => [
-        { t: 'out', text: 'SecurityMonitor.exe    1341 Console   1    12.048 K' },
-        { t: 'suc', text: '✓ Pipe executado. Processo isolado.' },
-      ],
-      xp: 90,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '🕵️', title: 'BUSCA RECURSIVA',
-      desc: 'Busque recursivamente todos os arquivos .enc.',
-      objective: 'Encontre todos arquivos .enc no sistema',
-      command: 'dir /s /b *.enc',
-      learn: '<strong>dir /s</strong> busca recursivamente. <strong>/b</strong> mostra apenas caminhos (bare). Combinar: dir /s /b *.enc.',
-      hint: 'dir /s /b *.enc',
-      simulate: () => [
-        { t: 'out', text: 'C:\\Users\\Infiltrado\\secret\\arquivo_criptografado.enc' },
-        { t: 'out', text: 'C:\\Windows\\Temp\\backup_sistema.enc' },
-        { t: 'out', text: 'C:\\ProgramData\\phantom\\dados.enc' },
-        { t: 'suc', text: '🎯 3 arquivos .enc encontrados.' },
-      ],
-      xp: 100,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '🔬', title: 'CONTANDO EVIDÊNCIAS',
-      desc: 'Conte quantas linhas de ERRO existem nos logs.',
-      objective: 'Conte as linhas com "ERRO" em logs.txt',
-      command: 'findstr /c:"ERRO" logs.txt',
-      learn: '<strong>findstr /c:"string"</strong> conta ocorrências. Alt: <strong>findstr "ERRO" logs.txt | find /c /v ""</strong>.',
-      hint: 'findstr /c:"ERRO" logs.txt',
-      simulate: () => [
-        { t: 'out', text: 'logs.txt:3' },
-        { t: 'suc', text: '✓ 3 entradas de erro. Relatório completo.' },
-      ],
-      xp: 80,
-    },
-    {
-      phase: 'FASE 3 — AVANÇADO', icon: '🏴‍☠️', title: 'MISSÃO FINAL',
-      desc: 'Leia o arquivo .enc e filtre apenas a linha "PHANTOM" via pipe.',
-      objective: 'Exiba apenas a linha "PHANTOM" do arquivo .enc',
-      command: 'type arquivo_criptografado.enc | findstr "PHANTOM"',
-      learn: 'Parabéns! Próximos passos: <strong>PowerShell</strong>, <strong>WMI/CIM</strong> e certificação CompTIA Security+.',
-      hint: 'type arquivo_criptografado.enc | findstr "PHANTOM"',
-      simulate: () => [
-        { t: 'out', text: '>>> PHANTOM ENCRYPTED PAYLOAD — OPERATION COMPLETE <<<' },
-        { t: 'out', text: '' },
-        { t: 'suc', text: '╔══════════════════════════════════════════╗' },
-        { t: 'suc', text: '║  🏆 OPERAÇÃO PHANTOM KEY — CONCLUÍDA!  ║' },
-        { t: 'suc', text: '╚══════════════════════════════════════════╝' },
-      ],
-      xp: 150,
-    },
-  ],
-};
 
 // ─── ACHIEVEMENTS ──────────────────────────────────
-const ACHIEVEMENTS = [
-  { id: 'first_blood', icon: '🩸', name: 'Primeiro Sangue', desc: 'Execute seu primeiro comando correto.' },
-  { id: 'no_hints_3', icon: '🧠', name: 'Sem Treinamento', desc: 'Complete 3 missões sem usar dicas.' },
-  { id: 'phase2', icon: '🔓', name: 'Escalada de Rank', desc: 'Alcance a Fase 2: Intermediário.' },
-  { id: 'phase3', icon: '🚀', name: 'Operativo Elite', desc: 'Alcance a Fase 3: Avançado.' },
-  { id: 'pipe_master', icon: '⚡', name: 'Mestre do Pipe', desc: 'Use pipe em um comando.' },
-  { id: 'xp_500', icon: '💎', name: 'Colecionador de XP', desc: 'Acumule 500 XP ou mais.' },
-  { id: 'persistent', icon: '🔄', name: 'Persistência', desc: 'Tente 5+ vezes numa missão.' },
-  { id: 'complete', icon: '🏆', name: 'Mestre do Terminal', desc: 'Complete todas as missões.' },
-];
+const ACHIEVEMENTS = window.GameData.ACHIEVEMENTS;
 
-const RANKING_DATA = [
-  { name: 'Ph4ntom_X', rank: 'MESTRE', xp: 3420 },
-  { name: 'NullB1te', rank: 'ELITE', xp: 2890 },
-  { name: 'Gr3yH4t', rank: 'FANTASMA', xp: 2650 },
-  { name: 'Z3r0D4y', rank: 'ESPECIALISTA', xp: 2100 },
-  { name: 'R00tkit_K', rank: 'HACKER', xp: 1750 },
-];
+const RANKING_DATA = window.GameData.RANKING_DATA;
 
-const QUICK_REF = {
-  linux: [{ cmd: 'pwd', desc: 'dir atual' }, { cmd: 'ls -la', desc: 'listar tudo' }, { cmd: 'cd X', desc: 'entrar' }, { cmd: 'cat', desc: 'ler arquivo' }, { cmd: 'grep', desc: 'buscar' }, { cmd: 'chmod', desc: 'permissões' }, { cmd: 'ps aux', desc: 'processos' }, { cmd: 'find', desc: 'buscar arquivo' }, { cmd: '| pipe', desc: 'encadear' }],
-  windows: [{ cmd: 'cd', desc: 'dir atual' }, { cmd: 'dir /a', desc: 'listar tudo' }, { cmd: 'cd X', desc: 'entrar' }, { cmd: 'type', desc: 'ler arquivo' }, { cmd: 'findstr', desc: 'buscar' }, { cmd: 'icacls', desc: 'permissões' }, { cmd: 'tasklist', desc: 'processos' }, { cmd: 'dir /s', desc: 'busca recurs.' }, { cmd: '| pipe', desc: 'encadear' }],
-};
+const QUICK_REF = window.GameData.QUICK_REF;
 
 // ─── BOOT ──────────────────────────────────────────
 const BOOT_LINES = [
@@ -541,7 +137,15 @@ const BOOT_LINES = [
   '> Selecione seu protocolo para começar.',
 ];
 
+
 function boot() {
+  // Alias the hacks if missing
+  if (window.GameData.MISSIONS.linux && !window.GameData.MISSIONS.linux_hacking) {
+    window.GameData.MISSIONS.linux_hacking = window.GameData.MISSIONS.linux;
+  }
+  if (window.GameData.MISSIONS.windows && !window.GameData.MISSIONS.windows_hacking) {
+    window.GameData.MISSIONS.windows_hacking = window.GameData.MISSIONS.windows;
+  }
   const log = $('boot-log');
   const bar = $('boot-bar');
   let i = 0;
@@ -564,20 +168,68 @@ function boot() {
   }, 180);
 }
 
+function showHubScreen() {
+  loadGameState();
+  $('os-screen').classList.add('active');
+  $('os-screen').style.display = 'flex';
+  
+  const packsDef = [
+    { id: 'linux_hacking', os: 'linux', icon: '💻', name: 'HACKING LINUX', desc: 'Infiltração básica (Bash)' },
+    { id: 'windows_hacking', os: 'windows', icon: '🪟', name: 'HACKING WIN', desc: 'Infiltração Padrão (CMD/PS)' },
+    { id: 'linux_network', os: 'linux', icon: '🌐', name: 'REDES LINUX', desc: 'Diagnóstico TCP/IP Moderno' },
+    { id: 'windows_network', os: 'windows', icon: '📡', name: 'REDES WIN', desc: 'Troubleshooting nativo Windows' },
+    { id: 'linux_server', os: 'linux', icon: '⚙️', name: 'ADMIN SERVER', desc: 'Gerência de discos, processos e logs' }
+  ];
+
+  let html = '';
+  packsDef.forEach(p => {
+    let prog = G.progress[p.id] || { missionIndex: 0 };
+    let total = (window.GameData.MISSIONS[p.id] || []).length;
+    let pct = total > 0 ? Math.floor((prog.missionIndex / total) * 100) : 0;
+    if (prog.missionIndex >= total && total > 0) pct = 100;
+    
+    html += `
+      <div class="os-card" onclick="selectOS('${p.id}', '${p.os}')">
+        <div class="os-card-icon">${p.icon}</div>
+        <div class="os-card-name">${p.name}</div>
+        <div class="os-card-shell">${pct}% CONCLUÍDO</div>
+        <div style="height:4px;width:100%;background:#1b2128;border-radius:4px;margin-bottom:12px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:var(--cyan);box-shadow: 0 0 10px var(--cyan);"></div>
+        </div>
+        <div class="os-card-desc">${p.desc}</div>
+        <div class="os-card-btn">▶ CESSAR</div>
+      </div>
+    `;
+  });
+  
+  const cardsContainer = document.querySelector('.os-cards');
+  if (cardsContainer) cardsContainer.innerHTML = html;
+  
+  const headerTitle = document.querySelector('.os-title');
+  if (headerTitle) headerTitle.innerHTML = 'HUB <span class="accent">CENTRAL</span>';
+  const headerDesc = document.querySelector('.os-desc');
+  if (headerDesc) headerDesc.innerText = 'Selecione uma trilha / módulo para iniciar ou continuar.';
+}
+
 function showOsScreen() {
   $('boot-screen').classList.remove('active');
-  $('os-screen').style.display = 'flex';
-  $('os-screen').classList.add('active');
+  showHubScreen();
 }
 
 // ─── OS SELECTION ──────────────────────────────────
-function selectOS(os) {
+function selectOS(pack, os) {
+  loadGameState();
+  G.pack = pack;
   G.os = os;
-  G.missionIndex = 0;
-  G.xp = 0; G.level = 1;
-  G.correct = 0; G.attempts = 0;
-  G.unlockedAchievements = new Set();
+  const p = G.progress[pack] || { missionIndex: 0, correct: 0, attempts: 0 };
+  G.missionIndex = p.missionIndex || 0;
+  G.correct = p.correct || 0;
+  G.attempts = p.attempts || 0;
+  
+  G.unlockedAchievements = new Set(G.unlockedAchievements);
   G.history = []; G.historyIdx = -1;
+  AudioEngine.init();
+  AudioEngine.keypress();
 
   if (os === 'linux') {
     termState.cwd = '~';
@@ -604,6 +256,7 @@ function selectOS(os) {
   printWelcome();
   loadMission();
 }
+
 
 // ─── TERMINAL PRINT ────────────────────────────────
 function print(text, type) {
@@ -635,7 +288,7 @@ function printWelcome() {
 
 // ─── MISSION LOAD ──────────────────────────────────
 function loadMission() {
-  const missions = MISSIONS[G.os];
+  const missions = window.GameData.MISSIONS[G.pack || G.os];
   if (G.missionIndex >= missions.length) { showVictory(); return; }
 
   const m = missions[G.missionIndex];
@@ -715,6 +368,22 @@ document.addEventListener('DOMContentLoaded', () => {
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') {
       handleCommand();
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      const raw = input.value;
+      const tok = raw.split(/\s+/);
+      const lastTok = tok[tok.length - 1];
+      if (lastTok) {
+        const inSecret = termState.cwd.includes('secret') || termState.cwd.includes('Secret');
+        const currentFiles = inSecret ? ['arquivo_criptografado.enc', 'chave.key', 'logs.txt', 'readme_hack.md', 'tools/'] : ['readme.txt', 'secret/', 'access.log', 'index.html']; 
+        const match = currentFiles.find(f => f.toLowerCase().startsWith(lastTok.toLowerCase()));
+        if (match) {
+          tok[tok.length - 1] = match;
+          input.value = tok.join(' ');
+          setTimeout(updateCursor, 0);
+        }
+      }
+    
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (G.historyIdx < G.history.length - 1) {
@@ -729,6 +398,8 @@ document.addEventListener('DOMContentLoaded', () => {
         input.value = G.history[G.history.length - 1 - G.historyIdx] || '';
       } else {
         G.historyIdx = -1;
+  AudioEngine.init();
+  AudioEngine.keypress();
         input.value = '';
       }
       setTimeout(updateCursor, 0);
@@ -1103,13 +774,46 @@ function handleCommand() {
 
   G.history.push(raw);
   G.historyIdx = -1;
+  AudioEngine.init();
+  AudioEngine.keypress();
 
   print(termState.prompt + ' ' + raw, 'cmd');
   input.value = '';
   setTimeout(updateCursor, 0);
 
-  const m = MISSIONS[G.os][G.missionIndex];
+  const m = window.GameData.MISSIONS[G.pack || G.os][G.missionIndex];
   const norm = raw.replace(/\s+/g, ' ').trim().toLowerCase();
+  
+  if (norm === 'exit' || norm === 'menu') {
+    saveGameState();
+    $('game-screen').classList.remove('active');
+    setTimeout(() => {
+        $('game-screen').style.display = 'none';
+        clearTerminal();
+        showHubScreen();
+    }, 400);
+    return;
+  }
+  
+  if (norm === 'help') {
+    print('Comandos Úteis (Atalhos do Sistema):', 'sys');
+    (QUICK_REF[G.os] || []).forEach(r => print(`  ${r.cmd.padEnd(15)} - ${r.desc}`, 'out'));
+    return;
+  }
+  
+  if (norm === 'restart' || norm === 'reset') {
+    if (G.pack) {
+      G.progress[G.pack] = { missionIndex: 0, correct: 0, attempts: 0 };
+    }
+    G.missionIndex = 0; G.correct = 0; G.attempts = 0; G.failCount = 0; G.hintShown = false;
+    G.history = []; G.historyIdx = -1;
+    saveGameState();
+    clearTerminal();
+    print('Progresso nativo da trilha resetado. Reconstruindo ambiente base...', 'sys');
+    setTimeout(loadMission, 600);
+    return;
+  }
+
   const expected = m.command.replace(/\s+/g, ' ').trim().toLowerCase();
   const correct = isCorrect(norm, expected);
 
@@ -1180,6 +884,7 @@ function handleCorrect(m) {
 }
 
 function handleWrong(m, raw) {
+  AudioEngine.error();
   G.failCount++;
 
   const cmd = raw.split(' ')[0];
@@ -1212,6 +917,7 @@ function handleWrong(m, raw) {
 
 // ─── XP / LEVEL ────────────────────────────────────
 function addXP(amount) {
+  saveGameState();
   G.xp += amount;
   while (G.level < XP_LEVELS.length && G.xp >= XP_LEVELS[G.level]) {
     G.level++;
@@ -1246,7 +952,8 @@ function updatePrompt() {
 
 // ─── MISSION COMPLETE ──────────────────────────────
 function showMissionComplete(xp, m) {
-  const isLast = G.missionIndex >= MISSIONS[G.os].length - 1;
+  AudioEngine.success();
+  const isLast = G.missionIndex >= (window.GameData.MISSIONS[G.pack || G.os] || []).length - 1;
   $('mc-subtitle').textContent = m.title;
   $('mc-xp').textContent = '+' + xp + ' XP';
   $('mc-next-btn').style.display = isLast ? 'none' : 'block';
@@ -1257,6 +964,7 @@ function showMissionComplete(xp, m) {
 }
 
 function nextMission() {
+  saveGameState();
   const ov = $('mission-complete-overlay');
   ov.style.display = 'none';
   ov.classList.remove('open');
@@ -1266,6 +974,7 @@ function nextMission() {
 
 // ─── ACHIEVEMENTS ──────────────────────────────────
 function unlockAchievement(id) {
+  saveGameState();
   if (G.unlockedAchievements.has(id)) return;
   G.unlockedAchievements.add(id);
   const a = ACHIEVEMENTS.find(x => x.id === id);
@@ -1368,10 +1077,11 @@ function showVictory() {
 function restartGame() {
   $('victory-screen').style.display = 'none';
   $('victory-screen').classList.remove('active');
-  Object.assign(G, { os: null, missionIndex: 0, xp: 0, level: 1, correct: 0, attempts: 0, hintShown: false, failCount: 0, unlockedAchievements: new Set(), history: [], historyIdx: -1 });
+  if (G.pack) G.progress[G.pack] = { missionIndex: 0, correct: 0, attempts: 0 };
+  G.missionIndex = 0; G.correct = 0; G.attempts = 0; G.hintShown = false; G.failCount = 0; G.history = []; G.historyIdx = -1;
+  saveGameState();
   termState.cwd = '~'; termState.prompt = 'infiltrado@server:~$';
-  $('os-screen').style.display = 'flex';
-  $('os-screen').classList.add('active');
+  showHubScreen();
 }
 
 function clearTerminal() {
@@ -1381,3 +1091,5 @@ function clearTerminal() {
 
 // ─── KICK OFF ──────────────────────────────────────
 boot();
+loadGameState();
+

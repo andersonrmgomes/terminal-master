@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 
@@ -36,26 +36,49 @@
         <h1 class="os-title">ESCOLHA SEU <span class="accent">PROTOCOLO</span></h1>
         <p class="os-desc">Selecione o sistema operacional para iniciar sua missão de infiltração</p>
       </div>
+      
       <div class="os-cards">
-        <div class="os-card" id="linux-card" onclick="selectOS('linux')">
-          <div class="os-card-glow linux-glow"></div>
+        <div class="os-card" id="linux-card" onclick="selectOS('linux', 'linux')">
           <div class="os-card-icon">🐧</div>
           <div class="os-card-name">LINUX</div>
-          <div class="os-card-shell">BASH SHELL</div>
-          <div class="os-card-tags"><span>ls</span><span>chmod</span><span>grep</span><span>pipe</span></div>
-          <div class="os-card-desc">Terminal nativo Unix. O favorito dos hackers e sysadmins de elite.</div>
-          <div class="os-card-btn">▶ INICIAR PROTOCOLO</div>
+          <div class="os-card-shell">HACKING</div>
+          <div class="os-card-tags"><span>ls</span><span>chmod</span><span>grep</span></div>
+          <div class="os-card-desc">Infiltração básica em ambiente Unix.</div>
+          <div class="os-card-btn">▶ INICIAR</div>
         </div>
-        <div class="os-card" id="win-card" onclick="selectOS('windows')">
-          <div class="os-card-glow win-glow"></div>
+        <div class="os-card" id="win-card" onclick="selectOS('windows', 'windows')">
           <div class="os-card-icon">🪟</div>
           <div class="os-card-name">WINDOWS</div>
-          <div class="os-card-shell">CMD / POWERSHELL</div>
-          <div class="os-card-tags"><span>dir</span><span>icacls</span><span>findstr</span><span>pipe</span></div>
-          <div class="os-card-desc">O ambiente mais difundido do mundo. Domine-o para acesso total.</div>
-          <div class="os-card-btn">▶ INICIAR PROTOCOLO</div>
+          <div class="os-card-shell">HACKING</div>
+          <div class="os-card-tags"><span>dir</span><span>icacls</span><span>findstr</span></div>
+          <div class="os-card-desc">Ambiente Microsoft CMD/PowerShell.</div>
+          <div class="os-card-btn">▶ INICIAR</div>
+        </div>
+        <div class="os-card" onclick="selectOS('linux_network', 'linux')">
+          <div class="os-card-icon">🌐</div>
+          <div class="os-card-name">REDES LINUX</div>
+          <div class="os-card-shell">DIAGNÓSTICO</div>
+          <div class="os-card-tags"><span>ping</span><span>traceroute</span><span>netstat</span></div>
+           <div class="os-card-desc">Análise de conectividade TCP/IP.</div>
+          <div class="os-card-btn">▶ INICIAR</div>
+        </div>
+        <div class="os-card" onclick="selectOS('linux_web', 'linux')">
+          <div class="os-card-icon">⚙️</div>
+          <div class="os-card-name">SRV WEB</div>
+          <div class="os-card-shell">ADMINISTRAÇÃO</div>
+          <div class="os-card-tags"><span>systemctl</span><span>tail</span><span>nano</span></div>
+           <div class="os-card-desc">Diagnóstico de Nginx e Apache.</div>
+          <div class="os-card-btn">▶ INICIAR</div>
+        </div>
+        <div class="os-card" onclick="restoreSave()">
+          <div class="os-card-icon">💾</div>
+          <div class="os-card-name">CONTINUAR</div>
+          <div class="os-card-shell">LOCAL SAVE</div>
+          <div class="os-card-desc">Carregar o último progresso salvo.</div>
+          <div class="os-card-btn">▶ RESTAURAR SESSÃO</div>
         </div>
       </div>
+
     </div>
   </div>
 
@@ -259,6 +282,7 @@
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <script src="js/missions.js"></script>
+  <script src="js/main.js"></script>
 </body>
 </html>

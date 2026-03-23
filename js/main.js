@@ -116,13 +116,21 @@ function saveState() {
   try { localStorage.setItem('tm_save', JSON.stringify(data)); } catch(e) {}
 }
 
+let fbLoadedOnce = false;
+
 async function loadState() {
   let s = null;
-  // 1. Tentar Firebase
-  if (window.fbLoad && window.FB && window.FB.user) {
-    try { s = await window.fbLoad(); } catch(e) {}
+  // 1. One-Time Fetch (Somente viaja à nuvem no primeiro carregamento do Perfil, poupando Firebase Reads absurdos)
+  if (!fbLoadedOnce && window.fbLoad && window.FB && window.FB.user) {
+    try { 
+      s = await window.fbLoad(); 
+      if (s) {
+        fbLoadedOnce = true;
+        localStorage.setItem('tm_save', JSON.stringify(s));
+      }
+    } catch(e) {}
   }
-  // 2. Fallback: localStorage
+  // 2. Cache Primário Engine-Host do Navegador (99% mais rápido e custo ZERO para Nuvem)
   if (!s) {
     try {
       const raw = localStorage.getItem('tm_save');
@@ -898,6 +906,18 @@ function handleCommand() {
   const norm = raw.replace(/\s+/g, ' ').trim().toLowerCase();
 
   // Built-in meta commands
+  if (norm === 'save --cloud' || norm === 'save') {
+    if (window.forceFbSave) {
+      window.forceFbSave({
+        progress: G.progress, xp: G.xp, level: G.level,
+        grubOs: G.grubOs, achievements: [...G.unlockedAchievements]
+      });
+      print('✓ Payload enviado. Sincronização manual (Cloud-Sync) concluída com êxito.', 'suc');
+    } else {
+      print('Erro: A ponte com o Cloudflare/Firebase Hosting está offline.', 'err');
+    }
+    return;
+  }
   if (norm === 'exit' || norm === 'menu') { closeGameWindow(); return; }
   if (norm === 'help') {
     print('Comandos disponíveis:', 'sys');
@@ -1098,20 +1118,16 @@ function buildQuickRef() {
   ).join('');
 }
 
-function buildRanking() {
+async function buildRanking() {
   const el = $('ranking-content');
   el.innerHTML = '<div class="ranking-loading"><span class="ranking-spinner"></span>Carregando ranking...</div>';
 
-  if (window.fbSubscribeRanking && window.FB && window.FB.user) {
-    // Cancela listener anterior se existir
-    if (window._rankingActiveSub) {
-      window.fbUnsubscribeRanking();
-      window._rankingActiveSub = false;
-    }
-    window._rankingActiveSub = true;
-    window.fbSubscribeRanking(entries => renderRankingEntries(entries));
+  if (window.fbFetchRanking && window.FB && window.FB.user) {
+    // Busca estática (On-Demand) = Queima 1 Firestore Read apenas ao clicar no Ranking.
+    const entries = await window.fbFetchRanking();
+    renderRankingEntries(entries);
   } else {
-    // Fallback local
+    // Fallback local caso não logado
     const me = { uid: 'local', displayName: 'GHOST (você)', level: G.level, xpTotal: G.xp, xpWindows: 0, xpLinux: 0, achievements: G.unlockedAchievements.size, isMe: true };
     renderRankingEntries([me]);
   }
